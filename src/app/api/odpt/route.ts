@@ -7,19 +7,22 @@ export async function GET(request: NextRequest) {
 		const railway = searchParams.get('railway');
 		const operator = searchParams.get('operator');
 
-		// Get the appropriate consumer key and base URL
-		// Standard API for general data, Challenge API for JR-East data
-		const isJReast = (operator?.includes('JR-East') || railway?.includes('JR-East'));
+		// Challenge API対応事業者（リアルタイム列車位置データあり）
+		// JR東日本、東武鉄道、京急電鉄
+		const challengeOperators = ['JR-East', 'Tobu', 'Keikyu'];
+		const isChallengeApi = challengeOperators.some(op =>
+			operator?.includes(op) || railway?.includes(op)
+		);
 
-		const consumerKey = isJReast
+		const consumerKey = isChallengeApi
 			? process.env.ODPT_CHALLENGE_CONSUMER_KEY
 			: (process.env.ODPT_CONSUMER_KEY || process.env.ODPT_COINSUMER_KEY);
 
-		const baseUrl = isJReast
+		const baseUrl = isChallengeApi
 			? (process.env.ODPT_CHALLENGE_BASE_URL?.replace(/\/$/, '') || 'https://api-challenge.odpt.org/api/v4')
 			: (process.env.ODPT_BASE_URL?.replace(/\/$/, '') || 'https://api.odpt.org/api/v4');
 
-		console.log('[API Route] Config:', { type, railway, operator, isJReast, baseUrl, hasKey: !!consumerKey });
+		console.log('[API Route] Config:', { type, railway, operator, isChallengeApi, baseUrl, hasKey: !!consumerKey });
 
 		if (!consumerKey) {
 			return NextResponse.json({ error: 'No consumer key configured' }, { status: 500 });

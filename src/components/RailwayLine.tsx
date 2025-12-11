@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useMemo } from 'react';
+import Image from 'next/image';
 import type { OdptTrain, OdptStation } from '@/types/odpt';
-import { TrainFront } from 'lucide-react';
 import { getTrainTypePriority } from '@/utils/trainPosition';
 
 interface RailwayLineProps {
@@ -15,7 +15,7 @@ interface RailwayLineProps {
 	lineColor?: string;
 	width?: number;
 	height?: number;
-	maxStationsPerRow?: number;
+	maxStationsPerRow?: number; // デフォルト10駅/行
 }
 
 // Train type colors and Japanese names
@@ -31,19 +31,202 @@ const TRAIN_TYPES: Record<string, { color: string; name: string }> = {
 	default: { color: '#64748b', name: '' },
 };
 
-// Get destination station name from ID
-const getDestinationName = (destId: string | string[] | undefined): string => {
+// 駅名日本語マッピング（APIにない場合のフォールバック）
+const STATION_NAME_MAP: Record<string, string> = {
+	// JR East
+	'Tokyo': '東京', 'Shinjuku': '新宿', 'Shibuya': '渋谷', 'Ikebukuro': '池袋',
+	'Ueno': '上野', 'Akihabara': '秋葉原', 'Yokohama': '横浜', 'Kawasaki': '川崎',
+	'Omiya': '大宮', 'Chiba': '千葉', 'Takao': '高尾', 'Mitaka': '三鷹',
+	'Nakano': '中野', 'Nishi-Funabashi': '西船橋', 'Tsudanuma': '津田沼',
+	'Ome': '青梅', 'Hachioji': '八王子', 'Tachikawa': '立川', 'Kokubunji': '国分寺',
+	'Musashi-Koganei': '武蔵小金井', 'Koenji': '高円寺', 'Ogikubo': '荻窪',
+	'Kichijoji': '吉祥寺', 'Asagaya': '阿佐ヶ谷', 'Nishi-Ogikubo': '西荻窪',
+	'Ochanomizu': '御茶ノ水', 'Yotsuya': '四ツ谷', 'Kanda': '神田',
+	'Funabashi': '船橋', 'Kashiwa': '柏', 'Matsudo': '松戸', 'Nishi-Kokubunji': '西国分寺',
+
+	// Toei Asakusa Line
+	'Nishi-Magome': '西馬込', 'Asakusa': '浅草', 'Oshiage': '押上',
+	'Gotanda': '五反田', 'Togoshi': '戸越', 'Nakanobu': '中延', 'Magome': '馬込',
+	'Sengakuji': '泉岳寺', 'Mita': '三田', 'Daimon': '大門', 'Higashi-Ginza': '東銀座',
+	'Nihombashi': '日本橋', 'Asakusabashi': '浅草橋', 'Kuramae': '蔵前',
+
+	// Toei Mita Line
+	'Meguro': '目黒', 'Nishi-Takashimadaira': '西高島平', 'Takashimadaira': '高島平',
+	'Shin-Itabashi': '新板橋', 'Sugamo': '巣鴨', 'Hakusan': '白山', 'Jimbocho': '神保町',
+
+	// Toei Shinjuku Line
+	'Motoyawata': '本八幡', 'Funabori': '船堀', 'Ojima': '大島',
+	'Shinjuku-Sanchome': '新宿三丁目', 'Iwamotocho': '岩本町', 'Bakurocho': '馬喰町',
+
+	// Toei Oedo Line
+	'Tochomae': '都庁前', 'Hikarigaoka': '光が丘', 'Nerima': '練馬',
+	'Shin-Egota': '新江古田', 'Ochiai-Minami-Nagasaki': '落合南長崎',
+	'Nakai': '中井', 'Higashi-Nakano': '東中野', 'Nakano-Sakaue': '中野坂上',
+	'Nishi-Shinjuku-Gochome': '西新宿五丁目', 'Toei-Shinjuku': '都営新宿',
+	'Kokuritsu-Kyogijo': '国立競技場', 'Aoyama-Itchome': '青山一丁目',
+	'Roppongi': '六本木', 'Azabu-Juban': '麻布十番', 'Shiodome': '汐留',
+	'Tsukishima': '月島', 'Monzen-Nakacho': '門前仲町', 'Ryogoku': '両国',
+	'Morishita': '森下', 'Kiyosumi-Shirakawa': '清澄白河', 'Ueno-Okachimachi': '上野御徒町',
+
+	// Tokyo Metro
+	'Ogikubo.1': '荻窪', 'Honancho': '方南町', 'Nakameguro': '中目黒',
+	'Kita-Senju': '北千住', 'Naka-Meguro': '中目黒', 'Wakoshi': '和光市',
+	'Shibuya.1': '渋谷', 'Ikebukuro.1': '池袋', 'Shinagawa': '品川',
+	'Ayase': '綾瀬', 'Kanamecho': '要町', 'Kotake-Mukaihara': '小竹向原',
+
+	// Tobu  
+	'Tobu-Dobutsukoen': '東武動物公園', 'Kasukabe': '春日部', 'Koshigaya': '越谷',
+	'Kuki': '久喜', 'Minami-Kurihashi': '南栗橋', 'Tobu-Nikko': '東武日光',
+	'Asakusa.1': '浅草', 'Ikebukuro.2': '池袋', 'Ogawamachi': '小川町',
+	'Shiki': '志木', 'Kawagoe': '川越', 'Kawagoeshi': '川越市',
+
+	// Seibu
+	'Hanno': '飯能', 'Tokorozawa': '所沢', 'Kodaira': '小平',
+	'Hon-Kawagoe': '本川越', 'Seibu-Shinjuku': '西武新宿',
+	'Hibarigaoka': 'ひばりヶ丘', 'Shakujii-Koen': '石神井公園',
+
+	// Keio
+	'Keio-Hachioji': '京王八王子', 'Hashimoto': '橋本', 'Takahatafudo': '高幡不動',
+	'Meidaimae': '明大前', 'Chofu': '調布', 'Kichijoji.1': '吉祥寺',
+	'Keio-Tama-Center': '京王多摩センター', 'Sasazuka': '笹塚',
+
+	// Odakyu
+	'Odawara': '小田原', 'Fujisawa': '藤沢', 'Machida': '町田',
+	'Sagami-Ono': '相模大野', 'Yoyogi-Uehara': '代々木上原',
+	'Shin-Yurigaoka': '新百合ヶ丘', 'Noborito': '登戸', 'Karakida': '唐木田',
+
+	// Tokyu
+	'Motomachi-Chukagai': '元町・中華街', 'Musashi-Kosugi': '武蔵小杉',
+	'Jiyugaoka': '自由が丘', 'Den-en-Chofu': '田園調布', 'Chuo-Rinkan': '中央林間',
+	'Nagatsuta': '長津田', 'Futako-Tamagawa': '二子玉川', 'Hiyoshi': '日吉',
+	'Kikuna': '菊名', 'Tamagawa': '多摩川', 'Oimachi': '大井町',
+
+	// Keikyu
+	'Uraga': '浦賀', 'Misakiguchi': '三崎口', 'Haneda-Airport': '羽田空港',
+	'Keikyu-Kawasaki': '京急川崎', 'Yokosuka-Chuo': '横須賀中央',
+	'HanedaAirportTerminal1and2': '羽田空港第1・第2ターミナル',
+	'HanedaAirportTerminal1': '羽田空港第1ターミナル',
+	'HanedaAirportTerminal2': '羽田空港第2ターミナル',
+	'Haneda-Airport-Terminal-1-and-2': '羽田空港第1・第2ターミナル',
+	'Haneda-Airport-Terminal-3': '羽田空港第3ターミナル',
+	'Keikyu-Kamata': '京急蒲田', 'Shinagawa.1': '品川',
+
+	// Keisei
+	'Aoto': '青砥', 'Keisei-Takasago': '京成高砂', 'Keisei-Ueno': '京成上野',
+	'Keisei-Funabashi': '京成船橋', 'Keisei-Tsudanuma': '京成津田沼',
+	'KeiseiNarita': '京成成田', 'Keisei-Narita': '京成成田',
+	'NaritaAirportTerminal1': '成田空港第1ターミナル',
+	'NaritaAirportTerminal2and3': '成田空港第2・第3ターミナル',
+	'Narita-Airport-Terminal-1': '成田空港第1ターミナル',
+	'Narita-Airport': '成田空港', 'ImbaNihonIdai': '印旛日本医大',
+	'Imba-Nihon-Idai': '印旛日本医大', 'Shin-Kamagaya': '新鎌ヶ谷',
+	'Keisei-Sakura': '京成佐倉', 'Shibayama-Chiyoda': '芝山千代田',
+	'Narita-Yukawa': '成田湯川', 'Nippori': '日暮里', 'Keisei-Sekiya': '京成関屋',
+	'Shin-Shibamata': '新柴又', 'Yotsugi': '四ツ木', 'Keisei-Tateishi': '京成立石',
+
+	// Hokuso Line
+	'Inzai-Makinohara': '印西牧の原', 'Chiba-New-Town-Chuo': '千葉ニュータウン中央',
+
+	// Saitama Railway
+	'Urawa-Misono': '浦和美園',
+};
+
+
+// Get destination station name from ID - with Japanese lookup
+const getDestinationName = (
+	destId: string | string[] | undefined,
+	stations: OdptStation[]
+): string => {
 	if (!destId) return '';
 	const id = Array.isArray(destId) ? destId[0] : destId;
-	// Extract station name from ID like "odpt.Station:JR-East.ChuoRapid.Tokyo"
+
+	// 駅リストから日本語名を検索
+	const station = stations.find(s => s['owl:sameAs'] === id);
+	if (station) {
+		const jaName = station['odpt:stationTitle']?.ja;
+		if (jaName && !/[a-zA-Z]/.test(jaName)) {
+			return jaName;
+		}
+		// dc:titleも試す
+		const dcTitle = station['dc:title'];
+		if (dcTitle && !/[a-zA-Z]/.test(dcTitle)) {
+			return dcTitle;
+		}
+	}
+
+	// ID末尾を取得してマッピングを試行
 	const parts = id.split('.');
-	return parts[parts.length - 1] || '';
+	const stationKey = parts[parts.length - 1] || '';
+
+	// マッピングから日本語名を取得
+	if (STATION_NAME_MAP[stationKey]) {
+		return STATION_NAME_MAP[stationKey];
+	}
+
+	// それでも見つからない場合は駅リストの日本語名を再チェック
+	if (station) {
+		return station['odpt:stationTitle']?.ja || station['dc:title'] || stationKey;
+	}
+
+	return stationKey;
 };
 
 // Get train type info
 const getTrainTypeInfo = (trainType: string) => {
-	const typeName = trainType.split('.').pop() || 'default';
+	const typeName = trainType?.split('.').pop() || 'default';
 	return TRAIN_TYPES[typeName] || TRAIN_TYPES.default;
+};
+
+// 矢印枠コンポーネント（左右方向）
+const ArrowBox = ({
+	color,
+	typeName,
+	destination,
+	delay,
+	direction, // 'left' or 'right' (進行方向)
+	icon
+}: {
+	color: string;
+	typeName: string;
+	destination: string;
+	delay: number;
+	direction: 'left' | 'right';
+	icon?: string;
+}) => {
+	// 左向き矢印か右向き矢印か
+	const arrowStyle = direction === 'left' ? {
+		clipPath: 'polygon(15% 0, 100% 0, 100% 100%, 15% 100%, 0 50%)'
+	} : {
+		clipPath: 'polygon(0 0, 85% 0, 100% 50%, 85% 100%, 0 100%)'
+	};
+
+	return (
+		<div className="relative flex items-center gap-1">
+			{direction === 'left' && <span className="text-[10px] text-slate-400">◀</span>}
+			<div
+				className="relative px-2 py-1 text-white text-center shadow-lg min-w-[60px] rounded"
+				style={{ backgroundColor: color }}
+			>
+				{icon && (
+					<Image
+						src={icon}
+						alt=""
+						width={16}
+						height={16}
+						className="absolute -top-2 -left-2 rounded"
+					/>
+				)}
+				<div className="text-[8px] font-bold opacity-90">{typeName || '普通'}</div>
+				<div className="text-[10px] font-bold whitespace-nowrap">{destination || '---'}</div>
+				{delay > 0 && (
+					<span className="absolute -top-1 -right-1 bg-red-500 text-white text-[7px] px-1 rounded-full font-bold">
+						+{Math.round(delay / 60)}
+					</span>
+				)}
+			</div>
+			{direction === 'right' && <span className="text-[10px] text-slate-400">▶</span>}
+		</div>
+	);
 };
 
 export default function RailwayLine({
@@ -56,9 +239,18 @@ export default function RailwayLine({
 	lineColor = '#3b82f6',
 	width = 1920,
 	height = 1080,
-	maxStationsPerRow = 20,
+	maxStationsPerRow = 10,
 }: RailwayLineProps) {
-	// Separate trains by direction
+	// 駅IDマップを作成
+	const stationIdMap = useMemo(() => {
+		const map = new Map<string, number>();
+		stations.forEach((s, idx) => {
+			map.set(s['owl:sameAs'], idx);
+		});
+		return map;
+	}, [stations]);
+
+	// 方向別に列車を分離
 	const { inboundTrains, outboundTrains } = useMemo(() => {
 		const inbound: OdptTrain[] = [];
 		const outbound: OdptTrain[] = [];
@@ -72,121 +264,110 @@ export default function RailwayLine({
 			}
 		});
 
-		// Sort by priority (express first for stacking)
-		const sortByPriority = (a: OdptTrain, b: OdptTrain) =>
-			getTrainTypePriority(b['odpt:trainType']) - getTrainTypePriority(a['odpt:trainType']);
-
-		return {
-			inboundTrains: inbound.sort(sortByPriority),
-			outboundTrains: outbound.sort(sortByPriority),
-		};
+		return { inboundTrains: inbound, outboundTrains: outbound };
 	}, [trains]);
 
 	// Layout calculations
 	const layout = useMemo(() => {
-		const padding = { left: 60, right: 60, top: 100, bottom: 80 };
-		const stationLabelHeight = 50;
-		const trainRowHeight = 60;
+		const padding = { left: 80, right: 80, top: 100, bottom: 80 };
 		const lineHeight = 8;
-		const rowSpacing = 180; // Space between rows
+		const rowSpacing = 200;
 
-		// Calculate rows needed
 		const numRows = Math.ceil(stations.length / maxStationsPerRow);
 		const stationsPerRow = Math.ceil(stations.length / numRows);
-
-		// Available width for stations
 		const availableWidth = width - padding.left - padding.right;
-		const stationSpacing = availableWidth / Math.max(stationsPerRow - 1, 1);
 
-		// Create station positions (no folding back, just rows)
-		const stationPositions: { x: number; y: number; row: number }[] = [];
+		// 駅位置を計算
+		const stationPositions: { x: number; y: number; row: number; index: number }[] = [];
 
 		stations.forEach((_, idx) => {
 			const row = Math.floor(idx / stationsPerRow);
 			const posInRow = idx % stationsPerRow;
+			const stationsInThisRow = Math.min(stationsPerRow, stations.length - row * stationsPerRow);
 
-			const x = padding.left + posInRow * stationSpacing;
+			const x = padding.left + (stationsInThisRow > 1
+				? (posInRow / (stationsInThisRow - 1)) * availableWidth
+				: availableWidth / 2);
 			const baseY = padding.top + row * rowSpacing;
 
-			stationPositions.push({ x, y: baseY, row });
+			stationPositions.push({ x, y: baseY, row, index: idx });
 		});
 
-		const totalHeight = padding.top + (numRows - 1) * rowSpacing + stationLabelHeight + trainRowHeight * 2 + padding.bottom;
+		const totalHeight = padding.top + (numRows - 1) * rowSpacing + 150 + padding.bottom;
 
 		return {
 			padding,
-			stationLabelHeight,
-			trainRowHeight,
 			lineHeight,
 			rowSpacing,
 			numRows,
 			stationsPerRow,
-			stationSpacing,
 			stationPositions,
-			totalHeight: Math.max(totalHeight, 400),
+			availableWidth,
+			totalHeight: Math.max(totalHeight, 500),
 		};
 	}, [stations.length, width, maxStationsPerRow]);
 
-	// Find train position
-	const getTrainX = (train: OdptTrain): number | null => {
+	// 列車位置を計算（fromStation と toStation から）
+	const getTrainPosition = (train: OdptTrain): { x: number; y: number; row: number } | null => {
 		const fromStation = train['odpt:fromStation'];
 		const toStation = train['odpt:toStation'];
 
-		const fromIdx = stations.findIndex(s => s['owl:sameAs'] === fromStation);
-		if (fromIdx === -1) return null;
+		const fromIdx = stationIdMap.get(fromStation);
+		if (fromIdx === undefined) return null;
 
 		const fromPos = layout.stationPositions[fromIdx];
 		if (!fromPos) return null;
 
+		// toStationがない場合は駅に停車中
 		if (!toStation) {
-			return fromPos.x;
+			return { x: fromPos.x, y: fromPos.y, row: fromPos.row };
 		}
 
-		const toIdx = stations.findIndex(s => s['owl:sameAs'] === toStation);
-		if (toIdx === -1) return fromPos.x;
+		const toIdx = stationIdMap.get(toStation);
+		if (toIdx === undefined) {
+			return { x: fromPos.x, y: fromPos.y, row: fromPos.row };
+		}
 
 		const toPos = layout.stationPositions[toIdx];
-		if (!toPos || fromPos.row !== toPos.row) return fromPos.x;
+		if (!toPos) {
+			return { x: fromPos.x, y: fromPos.y, row: fromPos.row };
+		}
 
-		// Position between stations
-		return (fromPos.x + toPos.x) / 2;
+		// 同じ行にいる場合は中間地点
+		if (fromPos.row === toPos.row) {
+			return {
+				x: (fromPos.x + toPos.x) / 2,
+				y: fromPos.y,
+				row: fromPos.row
+			};
+		}
+
+		// 異なる行の場合はfromの位置
+		return { x: fromPos.x, y: fromPos.y, row: fromPos.row };
 	};
 
-	// Get train row (for which row of the track it's on)
-	const getTrainRow = (train: OdptTrain): number => {
-		const fromStation = train['odpt:fromStation'];
-		const idx = stations.findIndex(s => s['owl:sameAs'] === fromStation);
-		if (idx === -1) return 0;
-		return layout.stationPositions[idx]?.row || 0;
-	};
-
-	// Group overlapping trains
-	const groupTrains = (trainList: OdptTrain[]) => {
-		const groups: { x: number; row: number; trains: OdptTrain[] }[] = [];
+	// 重なり防止のためのオフセット計算
+	const calculateTrainOffsets = (trainList: OdptTrain[]) => {
+		const positions: { train: OdptTrain; x: number; y: number; row: number; offset: number }[] = [];
+		const groups = new Map<string, number>();
 
 		trainList.forEach(train => {
-			const x = getTrainX(train);
-			if (x === null) return;
+			const pos = getTrainPosition(train);
+			if (!pos) return;
 
-			const row = getTrainRow(train);
+			// グループキー（近い位置をまとめる）
+			const groupKey = `${pos.row}-${Math.round(pos.x / 50)}`;
+			const offset = groups.get(groupKey) || 0;
+			groups.set(groupKey, offset + 1);
 
-			// Find existing group within 30px
-			const existingGroup = groups.find(g =>
-				g.row === row && Math.abs(g.x - x) < 30
-			);
-
-			if (existingGroup) {
-				existingGroup.trains.push(train);
-			} else {
-				groups.push({ x, row, trains: [train] });
-			}
+			positions.push({ train, ...pos, offset });
 		});
 
-		return groups;
+		return positions;
 	};
 
-	const inboundGroups = useMemo(() => groupTrains(inboundTrains), [inboundTrains, stations, layout]);
-	const outboundGroups = useMemo(() => groupTrains(outboundTrains), [outboundTrains, stations, layout]);
+	const inboundPositions = useMemo(() => calculateTrainOffsets(inboundTrains), [inboundTrains, layout, stationIdMap]);
+	const outboundPositions = useMemo(() => calculateTrainOffsets(outboundTrains), [outboundTrains, layout, stationIdMap]);
 
 	return (
 		<div className="railway-line-container bg-slate-950 rounded-xl overflow-hidden shadow-2xl">
@@ -240,7 +421,7 @@ export default function RailwayLine({
 
 					return (
 						<g key={`row-${rowIdx}`}>
-							{/* Track line background */}
+							{/* Track line */}
 							<line
 								x1={firstStation.x}
 								y1={lineY}
@@ -252,34 +433,27 @@ export default function RailwayLine({
 							/>
 
 							{/* Station circles and labels */}
-							{rowStations.map((pos, idx) => {
-								const stationIdx = rowIdx * layout.stationsPerRow + idx;
-								const station = stations[stationIdx];
+							{rowStations.map((pos) => {
+								const station = stations[pos.index];
 								if (!station) return null;
 
 								const stationName = station['odpt:stationTitle']?.ja || station['dc:title'] || '';
-								const isEndStation = stationIdx === 0 || stationIdx === stations.length - 1;
+								const isEndStation = pos.index === 0 || pos.index === stations.length - 1;
 
 								return (
 									<g key={station['owl:sameAs']} transform={`translate(${pos.x}, ${pos.y})`}>
-										{/* Station circle */}
 										<circle
 											r={isEndStation ? 10 : 6}
 											fill="#ffffff"
 											stroke={lineColor}
 											strokeWidth={isEndStation ? 4 : 2}
 										/>
-
-										{/* Station name - rotated for space */}
 										<text
 											x={0}
 											y={25}
 											textAnchor="start"
-											transform={`rotate(45, 0, 25)`}
-											className={`
-												fill-slate-300 
-												${isEndStation ? 'text-[11px] font-bold' : 'text-[9px]'}
-											`}
+											transform="rotate(45, 0, 25)"
+											className={`fill-slate-300 ${isEndStation ? 'text-[11px] font-bold' : 'text-[9px]'}`}
 										>
 											{stationName}
 										</text>
@@ -287,77 +461,55 @@ export default function RailwayLine({
 								);
 							})}
 
-							{/* Inbound trains (above the line) */}
-							{inboundGroups
-								.filter(g => g.row === rowIdx)
-								.map((group, groupIdx) => (
-									<g key={`inbound-${groupIdx}`}>
-										{group.trains.map((train, trainIdx) => {
-											const typeInfo = getTrainTypeInfo(train['odpt:trainType']);
-											const dest = getDestinationName((train as any)['odpt:destinationStation']);
-											const delay = train['odpt:delay'] || 0;
-											const yOffset = lineY - 35 - trainIdx * 50;
+							{/* Inbound trains (above the line) - 左向き */}
+							{inboundPositions
+								.filter(p => p.row === rowIdx)
+								.map((p) => {
+									const { train, x, offset } = p;
+									const typeInfo = getTrainTypeInfo(train['odpt:trainType']);
+									const dest = getDestinationName((train as any)['odpt:destinationStation'], stations);
+									const delay = train['odpt:delay'] || 0;
+									const xOffset = offset * 75;
 
-											return (
-												<g key={train['@id']} transform={`translate(${group.x}, ${yOffset})`}>
-													<foreignObject x={-60} y={-20} width={120} height={45} className="overflow-visible">
-														<div className="flex flex-col items-center">
-															<div
-																className="relative px-2 py-1 rounded-md text-white text-center shadow-lg border border-white/20"
-																style={{ backgroundColor: typeInfo.color }}
-															>
-																<div className="text-[10px] font-bold">{typeInfo.name || '普通'}</div>
-																<div className="text-[12px] font-bold">{dest || '---'}行</div>
-																{delay > 0 && (
-																	<span className="absolute -top-2 -right-2 bg-red-500 text-white text-[8px] px-1 rounded-full animate-pulse">
-																		+{Math.round(delay / 60)}
-																	</span>
-																)}
-															</div>
-															<span className="text-[8px] text-slate-400">→</span>
-														</div>
-													</foreignObject>
-												</g>
-											);
-										})}
-									</g>
-								))}
+									return (
+										<g key={train['@id']} transform={`translate(${x + xOffset}, ${lineY - 45})`}>
+											<foreignObject x={-50} y={-20} width={100} height={50} className="overflow-visible">
+												<ArrowBox
+													color={typeInfo.color}
+													typeName={typeInfo.name}
+													destination={dest + '行'}
+													delay={delay}
+													direction="left"
+												/>
+											</foreignObject>
+										</g>
+									);
+								})}
 
-							{/* Outbound trains (below the line) */}
-							{outboundGroups
-								.filter(g => g.row === rowIdx)
-								.map((group, groupIdx) => (
-									<g key={`outbound-${groupIdx}`}>
-										{group.trains.map((train, trainIdx) => {
-											const typeInfo = getTrainTypeInfo(train['odpt:trainType']);
-											const dest = getDestinationName((train as any)['odpt:destinationStation']);
-											const delay = train['odpt:delay'] || 0;
-											const yOffset = lineY + 70 + trainIdx * 50;
+							{/* Outbound trains (below the line) - 右向き */}
+							{outboundPositions
+								.filter(p => p.row === rowIdx)
+								.map((p) => {
+									const { train, x, offset } = p;
+									const typeInfo = getTrainTypeInfo(train['odpt:trainType']);
+									const dest = getDestinationName((train as any)['odpt:destinationStation'], stations);
+									const delay = train['odpt:delay'] || 0;
+									const xOffset = offset * 75;
 
-											return (
-												<g key={train['@id']} transform={`translate(${group.x}, ${yOffset})`}>
-													<foreignObject x={-60} y={-20} width={120} height={45} className="overflow-visible">
-														<div className="flex flex-col items-center">
-															<span className="text-[8px] text-slate-400">←</span>
-															<div
-																className="relative px-2 py-1 rounded-md text-white text-center shadow-lg border border-white/20"
-																style={{ backgroundColor: typeInfo.color }}
-															>
-																<div className="text-[10px] font-bold">{typeInfo.name || '普通'}</div>
-																<div className="text-[12px] font-bold">{dest || '---'}行</div>
-																{delay > 0 && (
-																	<span className="absolute -top-2 -right-2 bg-red-500 text-white text-[8px] px-1 rounded-full animate-pulse">
-																		+{Math.round(delay / 60)}
-																	</span>
-																)}
-															</div>
-														</div>
-													</foreignObject>
-												</g>
-											);
-										})}
-									</g>
-								))}
+									return (
+										<g key={train['@id']} transform={`translate(${x + xOffset}, ${lineY + 55})`}>
+											<foreignObject x={-50} y={-20} width={100} height={50} className="overflow-visible">
+												<ArrowBox
+													color={typeInfo.color}
+													typeName={typeInfo.name}
+													destination={dest + '行'}
+													delay={delay}
+													direction="right"
+												/>
+											</foreignObject>
+										</g>
+									);
+								})}
 						</g>
 					);
 				})}

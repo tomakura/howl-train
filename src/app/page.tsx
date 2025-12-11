@@ -47,6 +47,74 @@ const RAILWAY_GROUPS = [
 			{ id: 'odpt.Railway:TokyoMetro.Fukutoshin', name: '副都心線', color: '#9c5e31' },
 		],
 	},
+	{
+		operator: '東武鉄道',
+		color: '#0079c2',
+		railways: [
+			{ id: 'odpt.Railway:Tobu.TobuSkytree', name: 'スカイツリーライン', color: '#0079c2' },
+			{ id: 'odpt.Railway:Tobu.Isesaki', name: '伊勢崎線', color: '#0079c2' },
+			{ id: 'odpt.Railway:Tobu.Nikko', name: '日光線', color: '#ed7d22' },
+			{ id: 'odpt.Railway:Tobu.Tojo', name: '東上線', color: '#0079c2' },
+		],
+	},
+	{
+		operator: '西武鉄道',
+		color: '#0070af',
+		railways: [
+			{ id: 'odpt.Railway:Seibu.Ikebukuro', name: '池袋線', color: '#0070af' },
+			{ id: 'odpt.Railway:Seibu.Shinjuku', name: '新宿線', color: '#0070af' },
+		],
+	},
+	{
+		operator: '京王電鉄',
+		color: '#de1d65',
+		railways: [
+			{ id: 'odpt.Railway:Keio.Keio', name: '京王線', color: '#de1d65' },
+			{ id: 'odpt.Railway:Keio.Inokashira', name: '井の頭線', color: '#00a495' },
+		],
+	},
+	{
+		operator: '小田急電鉄',
+		color: '#0074bf',
+		railways: [
+			{ id: 'odpt.Railway:Odakyu.Odawara', name: '小田原線', color: '#0074bf' },
+		],
+	},
+	{
+		operator: '東急電鉄',
+		color: '#dd0000',
+		railways: [
+			{ id: 'odpt.Railway:Tokyu.Toyoko', name: '東横線', color: '#dd0000' },
+			{ id: 'odpt.Railway:Tokyu.DenEnToshi', name: '田園都市線', color: '#00a040' },
+			{ id: 'odpt.Railway:Tokyu.Meguro', name: '目黒線', color: '#009bbf' },
+		],
+	},
+	{
+		operator: '京急電鉄',
+		color: '#e60012',
+		railways: [
+			{ id: 'odpt.Railway:Keikyu.Main', name: '本線', color: '#e60012' },
+			{ id: 'odpt.Railway:Keikyu.Airport', name: '空港線', color: '#e60012' },
+			{ id: 'odpt.Railway:Keikyu.Kurihama', name: '久里浜線', color: '#e60012' },
+		],
+	},
+	{
+		operator: '京成電鉄',
+		color: '#0033cc',
+		railways: [
+			{ id: 'odpt.Railway:Keisei.Main', name: '本線', color: '#0033cc' },
+			{ id: 'odpt.Railway:Keisei.Oshiage', name: '押上線', color: '#0033cc' },
+			{ id: 'odpt.Railway:Keisei.Narita', name: '成田スカイアクセス', color: '#ff6600' },
+		],
+	},
+	{
+		operator: '横浜市営地下鉄',
+		color: '#0079c2',
+		railways: [
+			{ id: 'odpt.Railway:YokohamaMunicipal.Blue', name: 'ブルーライン', color: '#0079c2' },
+			{ id: 'odpt.Railway:YokohamaMunicipal.Green', name: 'グリーンライン', color: '#6cbb5a' },
+		],
+	},
 ];
 
 // Flat list for easy lookup
@@ -229,7 +297,7 @@ export default function Home() {
 						lineColor={selectedRailwayInfo?.color || '#3b82f6'}
 						width={1920}
 						height={1080}
-						maxStationsPerRow={25}
+						maxStationsPerRow={10}
 					/>
 				)}
 			</div>

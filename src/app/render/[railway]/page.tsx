@@ -73,7 +73,7 @@ export default async function RenderPage({ params }: RenderPageProps) {
 				lineColor={railwayInfo.color}
 				width={1920}
 				height={1080}
-				maxStationsPerRow={25}
+				maxStationsPerRow={10}
 			/>
 		</div>
 	);
