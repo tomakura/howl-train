@@ -1,12 +1,10 @@
 "use client";
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import type { OdptTrain, OdptStation } from '@/types/odpt';
-import { getTrainTypePriority } from '@/utils/trainPosition';
 
 interface RailwayLineProps {
-	railwayId: string;
 	railwayTitle: string;
 	stations: OdptStation[];
 	trains: OdptTrain[];
@@ -202,10 +200,9 @@ const ArrowBox = ({
 
 	return (
 		<div className="relative flex items-center gap-1">
-			{direction === 'left' && <span className="text-[10px] text-slate-400">◀</span>}
 			<div
-				className="relative px-2 py-1 text-white text-center shadow-lg min-w-[60px] rounded"
-				style={{ backgroundColor: color }}
+				className="relative px-2 py-1 text-white text-center shadow-md min-w-[66px] rounded"
+				style={{ backgroundColor: color, ...arrowStyle }}
 			>
 				{icon && (
 					<Image
@@ -224,13 +221,11 @@ const ArrowBox = ({
 					</span>
 				)}
 			</div>
-			{direction === 'right' && <span className="text-[10px] text-slate-400">▶</span>}
 		</div>
 	);
 };
 
 export default function RailwayLine({
-	railwayId,
 	railwayTitle,
 	stations,
 	trains,
@@ -241,6 +236,29 @@ export default function RailwayLine({
 	height = 1080,
 	maxStationsPerRow = 10,
 }: RailwayLineProps) {
+	const containerRef = useRef<HTMLDivElement | null>(null);
+	const [containerSize, setContainerSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+
+	useEffect(() => {
+		const el = containerRef.current;
+		if (!el) return;
+
+		const update = () => {
+			setContainerSize({
+				width: Math.floor(el.clientWidth),
+				height: Math.floor(el.clientHeight),
+			});
+		};
+
+		update();
+		const ro = new ResizeObserver(() => update());
+		ro.observe(el);
+		return () => ro.disconnect();
+	}, []);
+
+	const canvasWidth = containerSize.width > 0 ? Math.max(320, containerSize.width) : width;
+	const canvasHeight = containerSize.height > 0 ? Math.max(320, containerSize.height) : height;
+
 	// 駅IDマップを作成
 	const stationIdMap = useMemo(() => {
 		const map = new Map<string, number>();
@@ -269,13 +287,20 @@ export default function RailwayLine({
 
 	// Layout calculations
 	const layout = useMemo(() => {
-		const padding = { left: 80, right: 80, top: 100, bottom: 80 };
+		const paddingX = canvasWidth < 640 ? 32 : 64;
+		const paddingYTop = canvasHeight < 640 ? 64 : 84;
+		const paddingYBottom = canvasHeight < 640 ? 48 : 64;
+		const padding = { left: paddingX, right: paddingX, top: paddingYTop, bottom: paddingYBottom };
 		const lineHeight = 8;
-		const rowSpacing = 200;
 
 		const numRows = Math.ceil(stations.length / maxStationsPerRow);
+		const maxUsableHeight = Math.max(canvasHeight - padding.top - padding.bottom - 160, 320);
+		const computedRowSpacing = numRows > 1 ? Math.floor(maxUsableHeight / (numRows - 1)) : 0;
+		const minRowSpacing = canvasHeight < 720 ? 96 : 140;
+		const rowSpacing = Math.min(200, Math.max(minRowSpacing, computedRowSpacing));
+
 		const stationsPerRow = Math.ceil(stations.length / numRows);
-		const availableWidth = width - padding.left - padding.right;
+		const availableWidth = canvasWidth - padding.left - padding.right;
 
 		// 駅位置を計算
 		const stationPositions: { x: number; y: number; row: number; index: number }[] = [];
@@ -293,7 +318,7 @@ export default function RailwayLine({
 			stationPositions.push({ x, y: baseY, row, index: idx });
 		});
 
-		const totalHeight = padding.top + (numRows - 1) * rowSpacing + 150 + padding.bottom;
+		const totalHeight = Math.max(canvasHeight, padding.top + (numRows - 1) * rowSpacing + 150 + padding.bottom);
 
 		return {
 			padding,
@@ -305,10 +330,10 @@ export default function RailwayLine({
 			availableWidth,
 			totalHeight: Math.max(totalHeight, 500),
 		};
-	}, [stations.length, width, maxStationsPerRow]);
+	}, [stations, canvasWidth, canvasHeight, maxStationsPerRow]);
 
 	// 列車位置を計算（fromStation と toStation から）
-	const getTrainPosition = (train: OdptTrain): { x: number; y: number; row: number } | null => {
+	const getTrainPosition = useCallback((train: OdptTrain): { x: number; y: number; row: number } | null => {
 		const fromStation = train['odpt:fromStation'];
 		const toStation = train['odpt:toStation'];
 
@@ -344,10 +369,10 @@ export default function RailwayLine({
 
 		// 異なる行の場合はfromの位置
 		return { x: fromPos.x, y: fromPos.y, row: fromPos.row };
-	};
+	}, [layout.stationPositions, stationIdMap]);
 
 	// 重なり防止のためのオフセット計算
-	const calculateTrainOffsets = (trainList: OdptTrain[]) => {
+	const calculateTrainOffsets = useCallback((trainList: OdptTrain[]) => {
 		const positions: { train: OdptTrain; x: number; y: number; row: number; offset: number }[] = [];
 		const groups = new Map<string, number>();
 
@@ -364,16 +389,16 @@ export default function RailwayLine({
 		});
 
 		return positions;
-	};
+	}, [getTrainPosition]);
 
-	const inboundPositions = useMemo(() => calculateTrainOffsets(inboundTrains), [inboundTrains, layout, stationIdMap]);
-	const outboundPositions = useMemo(() => calculateTrainOffsets(outboundTrains), [outboundTrains, layout, stationIdMap]);
+	const inboundPositions = useMemo(() => calculateTrainOffsets(inboundTrains), [calculateTrainOffsets, inboundTrains]);
+	const outboundPositions = useMemo(() => calculateTrainOffsets(outboundTrains), [calculateTrainOffsets, outboundTrains]);
 
 	return (
-		<div className="railway-line-container bg-slate-950 rounded-xl overflow-hidden shadow-2xl">
+		<div className="railway-line-container bg-slate-950 rounded-xl overflow-hidden shadow-xl flex flex-col h-full">
 			{/* Header */}
 			<div
-				className="px-6 py-4 border-b border-slate-800 flex items-center justify-between"
+				className="px-5 py-3 border-b border-slate-800 flex items-center justify-between"
 				style={{ backgroundColor: lineColor + '20' }}
 			>
 				<div className="flex items-center gap-4">
@@ -381,7 +406,7 @@ export default function RailwayLine({
 						className="w-6 h-6 rounded-full border-4"
 						style={{ backgroundColor: lineColor, borderColor: lineColor }}
 					/>
-					<h2 className="text-2xl font-bold text-white">
+					<h2 className="text-xl font-bold text-white">
 						{railwayTitle}
 					</h2>
 				</div>
@@ -400,18 +425,19 @@ export default function RailwayLine({
 			</div>
 
 			{/* SVG Railway Line */}
-			<svg
-				width="100%"
-				height={layout.totalHeight}
-				viewBox={`0 0 ${width} ${layout.totalHeight}`}
-				preserveAspectRatio="xMidYMid meet"
-				className="block"
-			>
-				{/* Background */}
-				<rect width="100%" height="100%" fill="#0f172a" />
+			<div ref={containerRef} className="flex-1 min-h-0">
+				<svg
+					width="100%"
+					height="100%"
+					viewBox={`0 0 ${canvasWidth} ${layout.totalHeight}`}
+					preserveAspectRatio="xMidYMid meet"
+					className="block w-full h-full"
+				>
+					{/* Background */}
+					<rect width="100%" height="100%" fill="#0f172a" />
 
-				{/* For each row */}
-				{Array.from({ length: layout.numRows }).map((_, rowIdx) => {
+					{/* For each row */}
+					{Array.from({ length: layout.numRows }).map((_, rowIdx) => {
 					const rowStations = layout.stationPositions.filter(s => s.row === rowIdx);
 					if (rowStations.length === 0) return null;
 
@@ -419,7 +445,7 @@ export default function RailwayLine({
 					const lastStation = rowStations[rowStations.length - 1];
 					const lineY = firstStation.y;
 
-					return (
+						return (
 						<g key={`row-${rowIdx}`}>
 							{/* Track line */}
 							<line
@@ -467,7 +493,7 @@ export default function RailwayLine({
 								.map((p) => {
 									const { train, x, offset } = p;
 									const typeInfo = getTrainTypeInfo(train['odpt:trainType']);
-									const dest = getDestinationName((train as any)['odpt:destinationStation'], stations);
+									const dest = getDestinationName(train['odpt:destinationStation'], stations);
 									const delay = train['odpt:delay'] || 0;
 									const xOffset = offset * 75;
 
@@ -492,7 +518,7 @@ export default function RailwayLine({
 								.map((p) => {
 									const { train, x, offset } = p;
 									const typeInfo = getTrainTypeInfo(train['odpt:trainType']);
-									const dest = getDestinationName((train as any)['odpt:destinationStation'], stations);
+									const dest = getDestinationName(train['odpt:destinationStation'], stations);
 									const delay = train['odpt:delay'] || 0;
 									const xOffset = offset * 75;
 
@@ -511,12 +537,13 @@ export default function RailwayLine({
 									);
 								})}
 						</g>
-					);
-				})}
-			</svg>
+						);
+					})}
+				</svg>
+			</div>
 
 			{/* Legend */}
-			<div className="px-6 py-3 border-t border-slate-800 flex items-center gap-6 text-xs text-slate-400 flex-wrap">
+			<div className="px-5 py-2 border-t border-slate-800 flex items-center gap-6 text-xs text-slate-400 flex-wrap">
 				<span className="font-medium text-slate-300">種別:</span>
 				{Object.entries(TRAIN_TYPES).filter(([k]) => k !== 'default').map(([key, val]) => (
 					<div key={key} className="flex items-center gap-1">

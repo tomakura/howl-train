@@ -2,7 +2,7 @@
 
 import React, { useMemo } from 'react';
 import type { OdptTrain, OdptStation } from '@/types/odpt';
-import { TrainFront, AlertCircle, Clock } from 'lucide-react';
+import { TrainFront, Clock } from 'lucide-react';
 
 interface TrainGraphProps {
 	railwayTitle: string;
@@ -14,11 +14,6 @@ interface TrainGraphProps {
 // Helper to extract clean station name
 const getStationName = (station: OdptStation) => {
 	return station['odpt:stationTitle']?.ja || "Unknown";
-};
-
-// Helper to get station ID suffix for matching
-const getStationId = (urn: string) => {
-	return urn; // e.g. "odpt.Station:JR-East.Chuo.Tokyo"
 };
 
 export default function TrainGraph({ railwayTitle, stations, trains, updatedAt }: TrainGraphProps) {

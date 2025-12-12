@@ -64,7 +64,6 @@ export default async function RenderPage({ params }: RenderPageProps) {
 	return (
 		<div className="min-h-screen bg-slate-950 p-4">
 			<RailwayLine
-				railwayId={railwayId}
 				railwayTitle={railwayInfo.name}
 				stations={stations as OdptStation[]}
 				trains={trains as OdptTrain[]}

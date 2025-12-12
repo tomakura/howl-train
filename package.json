@@ -10,7 +10,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint .",
     "bot": "tsx src/bot/index.ts",
     "generate-images": "tsx src/scripts/generateImages.ts",
     "scheduler": "tsx src/scripts/scheduler.ts"

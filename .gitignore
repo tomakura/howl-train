@@ -78,6 +78,11 @@ target/
 # Jupyter Notebook
 .ipynb_checkpoints
 
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
 # IPython
 profile_default/
 ipython_config.py

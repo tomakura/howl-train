@@ -8,6 +8,7 @@ export interface OdptTrain {
 	'odpt:trainType': string;
 	'odpt:fromStation': string;
 	'odpt:toStation'?: string;
+	'odpt:destinationStation'?: string | string[];
 	'odpt:railDirection': string;
 	'odpt:delay': number;
 	'odpt:carComposition'?: number;

@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 
 // List of all supported railways for image generation
 export const SUPPORTED_RAILWAYS = [
@@ -66,6 +66,6 @@ export const SUPPORTED_RAILWAYS = [
 	{ id: 'odpt.Railway:YokohamaMunicipal.Green', name: '横浜市営グリーンライン', operator: 'YokohamaMunicipal', color: '#6cbb5a' },
 ];
 
-export async function GET(request: NextRequest) {
+export async function GET() {
 	return NextResponse.json(SUPPORTED_RAILWAYS);
 }

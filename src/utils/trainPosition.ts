@@ -107,7 +107,6 @@ export function calculateTrainPosition(
 	// Position is midpoint between fromStation and toStation
 	let pos = 0;
 	const minIdx = Math.min(fromIndex, toIndex);
-	const maxIdx = Math.max(fromIndex, toIndex);
 
 	for (let i = 0; i < minIdx; i++) {
 		pos += stationDistances[i] || 0;

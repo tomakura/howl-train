@@ -5,6 +5,7 @@ import type { OdptTrain, OdptStation } from '@/types/odpt';
 import RailwayLine from '@/components/RailwayLine';
 import OperationAlert, { type OperationInfo } from '@/components/OperationAlert';
 import { Clock, RefreshCw } from 'lucide-react';
+import Link from 'next/link';
 
 // Available Railways grouped by operator
 const RAILWAY_GROUPS = [
@@ -104,7 +105,7 @@ const RAILWAY_GROUPS = [
 		railways: [
 			{ id: 'odpt.Railway:Keisei.Main', name: '本線', color: '#0033cc' },
 			{ id: 'odpt.Railway:Keisei.Oshiage', name: '押上線', color: '#0033cc' },
-			{ id: 'odpt.Railway:Keisei.Narita', name: '成田スカイアクセス', color: '#ff6600' },
+			{ id: 'odpt.Railway:Keisei.NaritaSkyAccess', name: '成田スカイアクセス', color: '#ff6600' },
 		],
 	},
 	{
@@ -126,6 +127,7 @@ export default function Home() {
 	const [selectedRailway, setSelectedRailway] = useState(ALL_RAILWAYS[0].id);
 	const [stations, setStations] = useState<OdptStation[]>([]);
 	const [trains, setTrains] = useState<OdptTrain[]>([]);
+	const [isRealtime, setIsRealtime] = useState(true);
 	const [operationInfo, setOperationInfo] = useState<OperationInfo[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [updatedAt, setUpdatedAt] = useState<string>('');
@@ -150,38 +152,208 @@ export default function Home() {
 				operatorId ? fetch(`/api/odpt?type=info&operator=${operatorId}`) : Promise.resolve(null),
 			]);
 
-			const sData = await stationRes.json();
-			const tData = await trainRes.json();
-			const iData = infoRes ? await infoRes.json() : [];
+			type ApiErrorPayload = {
+				requiredEnv?: string;
+			};
 
-			if (Array.isArray(sData)) {
-				setStations(sData);
-			} else {
+			const parseJsonSafe = async (res: Response): Promise<unknown> => {
+				try {
+					return await res.json();
+				} catch {
+					return null;
+				}
+			};
+
+			const getRequiredEnv = (value: unknown): string | undefined => {
+				if (!value || typeof value !== 'object') return undefined;
+				const requiredEnv = (value as ApiErrorPayload).requiredEnv;
+				return typeof requiredEnv === 'string' ? requiredEnv : undefined;
+			};
+
+			const sData = await parseJsonSafe(stationRes);
+			const tData = await parseJsonSafe(trainRes);
+			const iData = infoRes ? await parseJsonSafe(infoRes) : [];
+
+			if (!stationRes.ok) {
+				const requiredEnv = getRequiredEnv(sData);
+				setStations([]);
+				setTrains([]);
+				setOperationInfo([]);
+				setError(
+					requiredEnv
+						? `駅データの取得に失敗しました（${requiredEnv} が未設定の可能性があります）`
+						: '駅データの取得に失敗しました'
+				);
+				return;
+			}
+
+			const stationList: OdptStation[] = Array.isArray(sData) ? (sData as OdptStation[]) : [];
+			setStations(stationList);
+
+			if (!Array.isArray(sData)) {
 				console.error("Failed to load stations:", sData);
 				setError('駅データの取得に失敗しました');
 			}
 
-			if (Array.isArray(tData)) {
-				setTrains(tData);
+			const parseTimeToMinutes = (timeStr: string): number => {
+				const [hRaw, mRaw] = timeStr.split(':');
+				const hours = Number.parseInt(hRaw || '0', 10);
+				const minutes = Number.parseInt(mRaw || '0', 10);
+				if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return NaN;
+				if (hours >= 24) return (hours - 24) * 60 + minutes + 1440;
+				return hours * 60 + minutes;
+			};
+
+			type OdptTrainTimetableObject = {
+				'odpt:departureTime'?: string;
+				'odpt:arrivalTime'?: string;
+				'odpt:departureStation'?: string;
+				'odpt:arrivalStation'?: string;
+			};
+
+			type OdptTrainTimetable = {
+				'@id': string;
+				'odpt:railway': string;
+				'odpt:operator': string;
+				'odpt:trainNumber': string;
+				'odpt:trainType': string;
+				'odpt:railDirection': string;
+				'odpt:trainTimetableObject': OdptTrainTimetableObject[];
+			};
+
+			const buildSimulatedTrains = (timetables: OdptTrainTimetable[]): OdptTrain[] => {
+				const stationIdSet = new Set(stationList.map(s => s['owl:sameAs']));
+				const now = new Date();
+				const nowMinutes = now.getHours() * 60 + now.getMinutes();
+				const nowAdjusted = nowMinutes < 180 ? nowMinutes + 1440 : nowMinutes;
+
+				const simulated: OdptTrain[] = [];
+				for (const tt of timetables) {
+					const objects = Array.isArray(tt['odpt:trainTimetableObject']) ? tt['odpt:trainTimetableObject'] : [];
+					const stops = objects
+						.map((o) => {
+							const station = o['odpt:departureStation'] || o['odpt:arrivalStation'];
+							const time = o['odpt:departureTime'] || o['odpt:arrivalTime'];
+							if (!station || !time) return null;
+							const minutes = parseTimeToMinutes(time);
+							if (!Number.isFinite(minutes)) return null;
+							return { station, minutes };
+						})
+						.filter((x): x is { station: string; minutes: number } => !!x);
+
+					if (stops.length < 2) continue;
+					const first = stops[0];
+					const last = stops[stops.length - 1];
+					if (!first || !last) continue;
+					if (nowAdjusted < first.minutes || nowAdjusted > last.minutes) continue;
+
+					let fromStop = first;
+					let toStop: typeof first | undefined;
+					for (let i = 0; i < stops.length - 1; i++) {
+						const a = stops[i];
+						const b = stops[i + 1];
+						if (!a || !b) continue;
+						if (nowAdjusted >= a.minutes && nowAdjusted < b.minutes) {
+							fromStop = a;
+							toStop = b;
+							break;
+						}
+					}
+
+					const fromStation = fromStop.station;
+					const toStation = toStop?.station;
+					if (!stationIdSet.has(fromStation)) continue;
+					if (toStation && !stationIdSet.has(toStation)) continue;
+
+					simulated.push({
+						'@id': `${tt['@id']}:sim`,
+						'@type': 'odpt:Train',
+						'dc:date': new Date().toISOString(),
+						'odpt:trainNumber': tt['odpt:trainNumber'],
+						'odpt:railway': tt['odpt:railway'],
+						'odpt:operator': tt['odpt:operator'],
+						'odpt:trainType': tt['odpt:trainType'],
+						'odpt:fromStation': fromStation,
+						...(toStation ? { 'odpt:toStation': toStation } : {}),
+						'odpt:destinationStation': last.station,
+						'odpt:railDirection': tt['odpt:railDirection'],
+						'odpt:delay': 0,
+					});
+				}
+
+				return simulated;
+			};
+
+			if (trainRes.ok && Array.isArray(tData) && tData.length > 0) {
+				setTrains(tData as OdptTrain[]);
+				setIsRealtime(true);
 			} else {
-				console.error("Failed to load trains:", tData);
-				// Don't set error for trains - might not have realtime data
+				if (!trainRes.ok) {
+					console.error('Failed to load trains:', tData);
+				}
+				// No realtime data (or failed): try timetable-based approximation
+				try {
+					const timetableRes = await fetch(`/api/odpt?type=timetables&railway=${selectedRailway}&limit=80`);
+					const ttData = await parseJsonSafe(timetableRes);
+					if (timetableRes.ok && Array.isArray(ttData)) {
+						setTrains(buildSimulatedTrains(ttData as OdptTrainTimetable[]));
+						setIsRealtime(false);
+					} else {
+						setTrains([]);
+						setIsRealtime(false);
+					}
+				} catch {
+					setTrains([]);
+					setIsRealtime(false);
+				}
 			}
 
 			// Process operation info
 			if (Array.isArray(iData)) {
-				const processed: OperationInfo[] = iData
-					.filter((info: any) => info['odpt:railway'] === selectedRailway || !info['odpt:railway'])
-					.map((info: any) => ({
-						railway: info['odpt:railway'] || '',
-						railwayTitle: info['odpt:railwayTitle']?.ja || info['odpt:railway']?.split(':').pop() || '',
-						status: info['odpt:trainInformationStatus']?.includes('運転見合わせ') ? 'suspend' :
-							info['odpt:trainInformationStatus']?.includes('遅延') ? 'delay' :
-								info['odpt:trainInformationStatus']?.includes('平常') ? 'normal' : 'other',
-						text: info['odpt:trainInformationText']?.ja || info['odpt:trainInformationText'] || '',
-						cause: info['odpt:trainInformationCause']?.ja || '',
-					}));
+				const processed: OperationInfo[] = [];
+				for (const raw of iData) {
+					if (!raw || typeof raw !== 'object') continue;
+					const info = raw as Record<string, unknown>;
+
+					const railway = typeof info['odpt:railway'] === 'string' ? (info['odpt:railway'] as string) : '';
+					if (railway && railway !== selectedRailway) continue;
+
+					const railwayTitleJa =
+						typeof (info['odpt:railwayTitle'] as { ja?: unknown } | undefined)?.ja === 'string'
+							? ((info['odpt:railwayTitle'] as { ja?: string }).ja as string)
+							: '';
+					const statusText = typeof info['odpt:trainInformationStatus'] === 'string'
+						? (info['odpt:trainInformationStatus'] as string)
+						: '';
+					const textField = info['odpt:trainInformationText'];
+					const textJa =
+						typeof (textField as { ja?: unknown } | undefined)?.ja === 'string'
+							? ((textField as { ja?: string }).ja as string)
+							: typeof textField === 'string'
+								? textField
+								: '';
+					const causeJa =
+						typeof (info['odpt:trainInformationCause'] as { ja?: unknown } | undefined)?.ja === 'string'
+							? ((info['odpt:trainInformationCause'] as { ja?: string }).ja as string)
+							: '';
+
+					processed.push({
+						railway,
+						railwayTitle: railwayTitleJa || (railway ? railway.split(':').pop() || '' : ''),
+						status: statusText.includes('運転見合わせ')
+							? 'suspend'
+							: statusText.includes('遅延')
+								? 'delay'
+								: statusText.includes('平常')
+									? 'normal'
+									: 'other',
+						text: textJa,
+						cause: causeJa,
+					});
+				}
 				setOperationInfo(processed);
+			} else {
+				setOperationInfo([]);
 			}
 
 			setUpdatedAt(new Date().toLocaleTimeString('ja-JP'));
@@ -208,20 +380,25 @@ export default function Home() {
 	}, [fetchData, autoRefresh]);
 
 	return (
-		<main className="min-h-screen bg-gradient-to-b from-slate-900 to-slate-950 text-white">
+		<main className="min-h-screen bg-slate-950 text-white flex flex-col">
 			{/* Header */}
-			<header className="sticky top-0 z-50 backdrop-blur-lg bg-slate-900/80 border-b border-slate-800">
-				<div className="max-w-[1920px] mx-auto px-6 py-4 flex items-center justify-between">
-					<h1 className="text-2xl font-black tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
-						ODPT リアルタイム列車モニター
-					</h1>
+			<header className="sticky top-0 z-50 backdrop-blur bg-slate-950/80 border-b border-slate-800">
+				<div className="max-w-[1920px] mx-auto px-6 py-3 flex items-center justify-between gap-4">
+					<div className="flex items-center gap-4">
+						<h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-100">
+							ODPT 列車位置モニター
+						</h1>
+						<Link href="/alerts" className="text-sm text-slate-300 hover:text-white underline underline-offset-4">
+							運行情報一覧
+						</Link>
+					</div>
 
 					<div className="flex items-center gap-4">
 						{/* Railway Selector */}
 						<select
 							value={selectedRailway}
 							onChange={(e) => setSelectedRailway(e.target.value)}
-							className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500 min-w-[200px]"
+							className="bg-slate-900 border border-slate-700 rounded-md px-3 py-2 text-white outline-none focus:ring-2 focus:ring-blue-500 min-w-[220px]"
 							aria-label="路線を選択"
 						>
 							{RAILWAY_GROUPS.map(group => (
@@ -236,7 +413,7 @@ export default function Home() {
 						{/* Auto-refresh toggle */}
 						<button
 							onClick={() => setAutoRefresh(!autoRefresh)}
-							className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-colors ${autoRefresh
+							className={`flex items-center gap-2 px-3 py-2 rounded-md border transition-colors ${autoRefresh
 								? 'bg-green-500/20 border-green-500 text-green-400'
 								: 'bg-slate-800 border-slate-700 text-slate-400'
 								}`}
@@ -250,7 +427,7 @@ export default function Home() {
 						<button
 							onClick={fetchData}
 							disabled={loading}
-							className="flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition-colors"
+							className="flex items-center gap-2 px-3 py-2 rounded-md bg-blue-600 hover:bg-blue-500 disabled:opacity-50 transition-colors"
 						>
 							<RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
 							<span className="text-sm">更新</span>
@@ -268,48 +445,55 @@ export default function Home() {
 			</header>
 
 			{/* Main Content */}
-			<div className="max-w-[1920px] mx-auto px-6 py-6">
+			<div className="max-w-[1920px] mx-auto px-6 py-4 flex-1 min-h-0 flex flex-col gap-3 overflow-hidden">
 				{/* Operation Alerts */}
-				<OperationAlert info={operationInfo} />
+				<div className="max-h-32 overflow-auto">
+					<OperationAlert info={operationInfo} />
+				</div>
 
 				{/* Error display */}
 				{error && (
-					<div className="mb-4 p-4 bg-red-500/20 border border-red-500 rounded-lg text-red-400">
-						{error}
+					<div className="p-3 bg-red-500/15 border border-red-500/60 rounded-md text-red-200 text-sm">
+						<div className="font-semibold">読み込みエラー</div>
+						<div className="text-red-200/90">{error}</div>
+						<div className="text-xs text-red-200/70 mt-1">
+							東京メトロ等が出ない場合は、`.env.local` に `ODPT_CONSUMER_KEY` を設定してください。
+						</div>
 					</div>
 				)}
 
 				{/* Loading state */}
 				{loading && stations.length === 0 ? (
-					<div className="flex flex-col items-center justify-center h-[600px] gap-4">
+					<div className="flex flex-col items-center justify-center flex-1 gap-4">
 						<div className="animate-spin rounded-full h-16 w-16 border-4 border-blue-500 border-t-transparent"></div>
 						<p className="text-slate-400">データを読み込み中...</p>
 					</div>
 				) : (
 					/* Railway Line Visualization */
-					<RailwayLine
-						railwayId={selectedRailway}
-						railwayTitle={selectedRailwayInfo?.name || ''}
-						stations={stations}
-						trains={trains}
-						updatedAt={updatedAt}
-						isRealtime={trains.length > 0}
-						lineColor={selectedRailwayInfo?.color || '#3b82f6'}
-						width={1920}
-						height={1080}
-						maxStationsPerRow={10}
-					/>
+					<div className="flex-1 min-h-0">
+						<RailwayLine
+							railwayTitle={selectedRailwayInfo?.name || ''}
+							stations={stations}
+							trains={trains}
+							updatedAt={updatedAt}
+							isRealtime={isRealtime}
+							lineColor={selectedRailwayInfo?.color || '#3b82f6'}
+							width={1920}
+							height={1080}
+							maxStationsPerRow={10}
+						/>
+					</div>
 				)}
 			</div>
 
 			{/* Footer */}
-			<footer className="border-t border-slate-800 mt-8">
+			<footer className="border-t border-slate-800">
 				<div className="max-w-[1920px] mx-auto px-6 py-4 flex items-center justify-between text-xs text-slate-500">
 					<p>
 						Data provided by <a href="https://www.odpt.org/" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">ODPT (Open Data for Public Transportation)</a>
 					</p>
 					<p>
-						{trains.length > 0 ? (
+						{isRealtime ? (
 							<span className="text-green-400">● リアルタイムデータ</span>
 						) : (
 							<span className="text-yellow-400">● 時刻表ベースデータ</span>
